@@ -13,8 +13,8 @@ The proposals are submitted in reStructuredText format.  To get inline code, enc
 To get hyperlinks, use backticks, angle brackets, and an underscore `like this <http://www.haskell.org/>`_.
 
 
-Proposal title
-==============
+Constant evaluation
+===================
 
 .. proposal-number:: Leave blank. This will be filled in when the proposal is
                      accepted.
@@ -30,16 +30,59 @@ Proposal title
 .. sectnum::
 .. contents::
 
-Here you should write a short abstract motivating and briefly summarizing the proposed change.
+This formalizes a notion compile-time evaluation for zero-cost abstractions, and certain backend functionality.
+Expressions may be "constant", meaning they can be fully evaluated at compile time, or "constant-erased" meaning they additionally must be erased at run time.
+Additional "relevant, yet erased" quantifiers are introduced for sake of abstractions with constants, which arguably fill in gaps in the existing Dependent Haskell plans.
 
 
 Motivation
 ------------
+
+Guaranteed Optimization
+~~~~~~~~~~~~~~~~~~~~~~~
+
+The essence of most optimization is partial evaluation:
+Inlining is (lazy) value-abstraction elimination.
+Specialization is lazy type-abstraction elimination.
+constant propagation is the full evaluation of sub-expressions.
+Even other rewrite rules that don't stem directly from the dynamic semantics still often only are applicable after some partial evaluation.
+
+Performing a single reduction is trivial.
+But each reduction opens the door to potentially more reductions, making exploring the space of possible partial evaluation a formidable search problem.
+Supercompilation especially runs afoul of this cost, but even more common optimization passes impose some unpredictability.
+When unoptimized builds are fast enough, this is fine: extra performance is a happy surprise.
+But when they aren't, the programmer is put in a stressful and uncertain situation---not unlike reasoning about functional correctness without the aid of types.
+
+From a compiler-author's standpoint, type systems are *the* way to get away with a local/compositional analysis instead of a global analysis.
+
+
+
+
+Here you should describe in greater detail the motivation for the change. This
+should include concrete examples of the shortcomings of the current
+state of things.
+
+Backend Necessity
+~~~~~~~~~~~~~~~~~
+
+
 Give a strong reason for why the community needs this change. Describe the use case as clearly as possible and give an example. Explain how the status quo is insufficient or not ideal.
 
 
 Proposed Change Specification
 -----------------------------
+
+"Constantness" effect system
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+:code:`forall a :: k -.` :code:`forall a :: k -.`
+
+Constant-qualifiers
+~~~~~~~~~~~~~~~~~~~
+
+
+
+
 Specify the change in precise, comprehensive yet concise language. Avoid words like should or could. Strive for a complete definition. Your specification may include,
 
 * grammar and semantics of any new syntactic constructs
