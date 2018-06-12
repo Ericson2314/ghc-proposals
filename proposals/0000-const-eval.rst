@@ -53,7 +53,14 @@ Supercompilation especially runs afoul of this cost, but even more common optimi
 When unoptimized builds are fast enough, this is fine: extra performance is a happy surprise.
 But when they aren't, the programmer is put in a stressful and uncertain situation---not unlike reasoning about functional correctness without the aid of types.
 
-From a compiler-author's standpoint, type systems are *the* way to get away with a local/compositional analysis instead of a global analysis.
+From a compiler-author's standpoint, type systems are *the* way to get away with a local/compositions analysis instead of a global analysis.
+Here is no exception.
+We can mark terms "constant" if they can be evaluated at compile time, and then the partial partial evaluator knows that exploring a "constant" subterm will always make progress.
+
+At first glance, this is just a fancy way of describing the constant-folding pass that just about every compiler has.
+The key, however, is identifiers can also be marked constant if we know they will only be substituted for constant terms.
+
+
 
 
 
@@ -72,10 +79,16 @@ Give a strong reason for why the community needs this change. Describe the use c
 Proposed Change Specification
 -----------------------------
 
-"Constantness" effect system
-~~~~~~~~~~~~~~~~~~~~~~~~~~
+"Constance" of terms
+~~~~~~~~~~~~~~~~~~~~~~~
 
-:code:`forall a :: k -.` :code:`forall a :: k -.`
+Just about any compiler, GHC included, has the functionality to identify closed terms as constants.
+We propose extending this analysis in an effect system where every term is deemed either constant or non-constant, and any term
+
+As mentioned, all our existing quantifiers will introduce normal non-constant bindings.
+We will need a new family of quantifiers
+
+``forall a :: k -.`` asdf ``forall a :: k -.``
 
 Constant-qualifiers
 ~~~~~~~~~~~~~~~~~~~
@@ -96,8 +109,14 @@ Effect and Interactions
 -----------------------
 Detail how the proposed change addresses the original problem raised in the motivation.
 
-Discuss possibly contentious interactions with existing language or compiler features. 
+Discuss possibly contentious interactions with existing language or compiler features.
 
+``RuntimeRep``
+~~~~~~~~~~~~~~
+
+Currently, we have a rule "No variable may have a levity-polymorphic type".
+We can relax this so that the kinds of the types of variables can contain variables as long as those are bound with a specializing quantifier.
+This will make greatly increase the expressiveness of code working with exotic runtime represenations.
 
 Costs and Drawbacks
 -------------------
