@@ -258,20 +258,42 @@ Alternatives
 
     f :: a -> Eq a => a
 
-  Which is gratuitously higher-ranked. Base Haskell 2010 never reorders
-  arguments currently, so just moving the ``Eq a`` to the front seems overly
-  magical.
+  Which is gratuitously outside prenex normal form.
+  
+  Base Haskell 2010 never rearranges explicitly written types signatures, but
+  does "regeneralize" some types moving constraints so precedent is a bit mixed.
+  For example to the first point::
+
+    Prelude> f :: Int -> Eq a => a; f = undefined
+    
+    <interactive>:1:6: error:
+        • Illegal qualified type: Eq a => a
+          Perhaps you intended to use RankNTypes or Rank2Types
+        • In the type signature: f :: Int -> Eq a => a
+  
+  But to the second::
+
+    Prelude> f _ = abs
+    Prelude> :t f
+    f :: Num a => p -> a -> a
+
+  The conservative approach is to treat function return signatures as something
+  closure to a type signature. One perhaps scale-tipping argument is in a dependent Haskell future
+
+  so just moving the ``Eq a`` to the front seems
+  overly magical.
 
   However, with ``-XRank2Types``, contexts are allowed in types and so this
   naturally becomes legal again. In GHCi today we have::
 
     Prelude> :set -XRank2Types
     Prelude> f :: Int -> Eq a => a; f = undefined
-    Prelude> :t f
-    f :: Eq a => Int -> a
+    Prelude> :t +v f
+    f :: Int -> Eq a => a
 
-  i.e. the "out of order" ``Eq a`` is allowed and moved to the front.
-  By analogy, the return signature ``Eq a`` would also be so moved.
+  (Note that the ``+v`` is essential to not "regeneralize" the type.) By
+  analogy, the return signature ``Eq a`` would be allowed, and kept after the
+  arugments as written.
 
 Unresolved Questions
 --------------------
