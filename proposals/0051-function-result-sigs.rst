@@ -188,7 +188,7 @@ an optional type annotation::
            | pat varop pat
            | ( funlhs' ) apat {apat}
 
-  funlhs -> funlhs' [:: type]
+  funlhs -> funlhs' [:: [constraint =>] type]
 
 This results in an ambiguity with pattern bindings, which is resolved in favor
 of function bindings.
@@ -234,22 +234,8 @@ Costs and Drawbacks
 
 This is one more feature to implement and maintain.
 
-
-Alternatives
-------------
-
-* We could treat ``f :: t = <rhs>`` equivalently to ``f = <rhs> :: t``, but
-  this is neither consistent nor terribly useful.
-
-* We could detect CUSKs as we do in types to enable polymorphic recursion, but
-  this makes little sense as we are in the process of their deprecation.
-
-* We could allow contexts in the return type.
-  An earlier version of this proposal had::
-
-    funlhs -> funlhs' [:: [context =>] type]
-
-  But the usage of this can be confusing.
+* Note the the context in the grammer.
+  The usage of this can be confusing.
   For example::
 
     f (x :: a) :: Eq a => a
@@ -259,41 +245,40 @@ Alternatives
     f :: a -> Eq a => a
 
   Which is gratuitously outside prenex normal form.
-  
+
   Base Haskell 2010 never rearranges explicitly written types signatures, but
   does "regeneralize" some types moving constraints so precedent is a bit mixed.
   For example to the first point::
 
     Prelude> f :: Int -> Eq a => a; f = undefined
-    
+
     <interactive>:1:6: error:
         • Illegal qualified type: Eq a => a
           Perhaps you intended to use RankNTypes or Rank2Types
         • In the type signature: f :: Int -> Eq a => a
-  
-  But to the second::
 
-    Prelude> f _ = abs
-    Prelude> :t f
-    f :: Num a => p -> a -> a
-
-  The conservative approach is to treat function return signatures as something
-  closure to a type signature. One perhaps scale-tipping argument is in a dependent Haskell future
-
-  so just moving the ``Eq a`` to the front seems
-  overly magical.
-
-  However, with ``-XRank2Types``, contexts are allowed in types and so this
-  naturally becomes legal again. In GHCi today we have::
+  Thought with ``Rank2Types``, this is allowed with the written type.::
 
     Prelude> :set -XRank2Types
     Prelude> f :: Int -> Eq a => a; f = undefined
     Prelude> :t +v f
     f :: Int -> Eq a => a
 
-  (Note that the ``+v`` is essential to not "regeneralize" the type.) By
-  analogy, the return signature ``Eq a`` would be allowed, and kept after the
-  arugments as written.
+  (Note that the ``+v`` is essential to not "regeneralize" the type.) But to
+  the second::
+
+    Prelude> f _ = abs
+    Prelude> :t f
+    f :: Num a => p -> a -> a
+
+Alternatives
+------------
+
+* We could treat ``f :: t = <rhs>`` equivalently to ``f = <rhs> :: t``, but
+  this is neither consistent nor terribly useful.
+
+* We could detect CUSKs as we do in types to enable polymorphic recursion, but
+  this makes little sense as we are in the process of their deprecation.
 
 Unresolved Questions
 --------------------
