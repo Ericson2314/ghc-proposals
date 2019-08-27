@@ -1,22 +1,7 @@
-Notes on reStructuredText - delete this section before submitting
-==================================================================
-
-The proposals are submitted in reStructuredText format.  To get inline code, enclose text in double backticks, ``like this``.  To get block code, use a double colon and indent by at least one space
-
-::
-
- like this
- and
-
- this too
-
-To get hyperlinks, use backticks, angle brackets, and an underscore `like this <http://www.haskell.org/>`_.
-
-
-Proposal title
+Modularize GHC
 ==============
 
-.. author:: Your name
+.. author:: John Ericson
 .. date-accepted:: Leave blank. This will be filled in when the proposal is accepted.
 .. proposal-number:: Leave blank. This will be filled in when the proposal is
                      accepted.
@@ -32,57 +17,120 @@ Proposal title
 .. sectnum::
 .. contents::
 
-Here you should write a short abstract motivating and briefly summarizing the proposed change.
-
+Meta-proposal for a number of different efforts to make GHC easier to develop and use as a library.
+The interactions are subtle and I believe deserve a unified treatment.
 
 Motivation
 ----------
-Give a strong reason for why the community needs this change. Describe the use
-case as clearly as possible and give an example. Explain how the status quo is
-insufficient or not ideal.
 
-A good Motivation section is often driven by examples and real-world scenarios.
+Haskell prides itself on virtues such as code reuse, modularity, abstraction, and composition.
+GHC, one of the oldest code bases still in wide use, does not live up to those virtues.
+There has long been interest in refactoring GHC to make it live up to this, but the path is long and tangled.
 
+There are number of different efforts in this direction, but they are not entirely parallel.
+Individual MRs and proposals do a poor job of capturing the overall plan.
+Moreover, while the pieces are individually motivated, their real prize is all the work together.
+
+First, This proposal kicks things off by proposing an initial plan, in the hopes that the proposal process will give it a wide audience.
+But the exact plan will inevitably change, so it secondarily proposes keeping a wiki page up to date with the current plan and current status.
+Strictly speaking, since the MRs and other proposals are reviewed and approved individually, the wiki page is the more actionable part of this proposal.
+But it's not worth writing a proposal *just* for that when anyone can create a wiki page.
+I (@Ericson2314) am therefore more interested in the preliminary consensus part, nebulous as it may be.
+[See `#236`_, the first example of a such a "big picture" proposal, for comparison.]
 
 Proposed Change Specification
 -----------------------------
-Specify the change in precise, comprehensive yet concise language. Avoid words
-like "should" or "could". Strive for a complete definition. Your specification
-may include,
 
-* grammar and semantics of any new syntactic constructs
-* the types and semantics of any new library interfaces
-* how the proposed change interacts with existing language or compiler
-  features, in case that is otherwise ambiguous
+A wiki page will be kept with the following rough plan and each item's progress.
+Additionally, acceptance of this proposal indicates a rough agreement that these rather large refactors are worth pursuing.
+The MRs and other proposals are still reviewed and approved individually, and the plan (and its wiki page) will change accordingly.
 
-Note, however, that this section need not describe details of the
-implementation of the feature or examples. The proposal is merely supposed to
-give a conceptual specification of the new feature and its behavior.
+The plan is broken into topics, with individual proposals and MRs, along the dependencies with each topic, included as sublists.
+
+Multi-target GHC
+~~~~~~~~~~~~~~~~
+
+GHC should allow the platform its compiling for to be configured at run time.
+This is here because it unblocks other topics; not trying to smuggle features among tech debt.
+
+* [X] No more target info baked in ``Config.hs`` (it's now in ``settings``).
+
+* [X] No more ``*_TARGET_*`` macros.
+
+* [ ] Remove ``#include "MachDeps.h"`` from the compiler proper.
+
+  * Most difficult to do with the primops.
+    See `GHC #16964`_ for details.
+
+* [ ] Extend CLI to make overriding the target easier than changing ``settings``.
+
+Build stage 1 GHC with plain Cabal
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+A large amount of the complexity that Make and Hadrian deal with can and should be gotten rid of.
+Building stage 1 like a normal project would make GHC development far more accessible, and the GHC API easier to use from other projects, especially when a temporary fork is needed.
+Hadrian is still needed for multi-stage bootstrapping, but long term perhaps could disentangle itself from GHC entirely, and rebrand itself as a Cabal reimplementation.
+Lastly, a pure Cabal, if not entirely automatic, build process could potentially speed up the deprecation of ``make``.
+
+* [ ] Convert code-gen programs to TH
+
+  * [ ] Get TH working in GHC without complicating bootstrap requirements
+
+    * [ ] Requires stage hygiene for TH (`#243`_) to not break cross compiled GHC.
+
+      * [ ] Requires multi-package GHC (`#243`_) to pun stages as separate modules for hygiene.
+
+    * [ ] Requires naive core interpreter (`#162`_) to deal with ABI changes from stage0.
+
+* [ ] Push ``configure.ac`` deeper.
+  Individual components care about configuring different things;
+  the compiler itself shouldn't need much configuration at all with most choices punted to run time.
+  Cabal projects support a ``build-type: configure`` which makes integration relatively seamless.
+  Make and Hadrian do want to ensure that different components inspecting the same thing get the same result.
+  They still need an overall configure step, so we could use ``aclocal.m4`` to share code between the old and new ``configure.ac``.
+
+Abstract over ``DynFlags``
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``DynFlags`` has no meaning.
+It is just a roll up of every configuration option anything needs ever.
+This leaks information to each logical part of the compiler, and prevents adding additional components with more configuration options.
+
+The simplest thing to do is make purpose-specific configuration records, and ``Has*`` classes that allow projecting those records.
+Then every ``DynFlags`` can be replaced with a type parameter with the relevant constraints.
+``DynFlags`` would only be used by the entry point to satisfy all the constraints.
+
+
+
+Reduce hs-boot tangle
+~~~~~~~~~~~~~~~~~~~~~
+
+`hs-boot` files have annoyed everyone that works on GHC.
+Of all that could be said about them, perhaps most important is nothing much checks their growth over time.
+As such, GHC tends towards a greater *un*separation of concerns.
+Increasing entropy is always a problem with code maintenance, but this makes it more acute.
+
+Secondarily, every `hs-boot` is poignantly a near-miss opportunity for modularity.
+The abstract interface indicates that only certain details matter, but the knot is already tied so theirs no opportunity to plug in something different.
 
 Examples
 --------
-This section illustrates the specification through the use of examples of the
-language change proposed. It is best to exemplify each point made in the
-specification, though perhaps one example can cover several points. Contrived
-examples are OK here. If the Motivation section describes something that is
-hard to do without this proposal, this is a good place to show how easy that
-thing is to do with the proposal.
+
+Not much to show besides plan and links.
 
 Effect and Interactions
 -----------------------
-Detail how the proposed change addresses the original problem raised in the
-motivation.
 
-Discuss possibly contentious interactions with existing language or compiler
-features.
-
+Covered in "Proposed Change Specification" as the effects and interactions, rather than changes themselves, are precisely what's being proposed here.
 
 Costs and Drawbacks
 -------------------
-Give an estimate on development and maintenance costs. List how this effects
-learnability of the language for novice users. Define and list any remaining
-drawbacks that cannot be resolved.
 
+- The changes that strive to get rid of the ``hs-boot`` tangle will make the types bigger (if not much fancier).
+  This is in my view an unavoidable trade-off with tying the not at the module vs value level.
+
+- Proliferation of dictionaries means GHC will probably loose performance without ``-fexpose-all-unfoldings``.
+  I think this is a small price to pay for modularity though.
 
 Alternatives
 ------------
@@ -92,15 +140,19 @@ discuss why they are insufficient.
 
 Unresolved Questions
 --------------------
-Explicitly list any remaining issues that remain in the conceptual design and
-specification. Be upfront and trust that the community will help. Please do
-not list *implementation* issues.
 
-Hopefully this section will be empty by the time the proposal is brought to
-the steering committee.
+Every step of the way new things will come up.
 
 
 Implementation Plan
 -------------------
-(Optional) If accepted who will implement the change? Which other resources
-and prerequisites are required for implementation?
+
+I (@Ericson2314) will port this document over to the wiki page.
+The individual proposals MRs will continued to be pushed by their current authors, but I hope with this document others would feel more able to contributors.
+
+.. _`#162`: https://github.com/ghc-proposals/ghc-proposals/issues/162
+.. _`#236`: https://github.com/ghc-proposals/ghc-proposals/pull/236
+.. _`#243`: https://github.com/ghc-proposals/ghc-proposals/pull/243
+.. _`#263`: https://github.com/ghc-proposals/ghc-proposals/pull/263
+
+.. _`GHC #16964`: https://gitlab.haskell.org/ghc/ghc/issues/16964
