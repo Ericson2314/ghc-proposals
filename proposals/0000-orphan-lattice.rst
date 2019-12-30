@@ -69,93 +69,80 @@ We can take their reflexive-transitive closure to get a partial order.
 We can ignore any modules that don't provide types, classes, or instances, removing them from the relation.
 
 The core feature of this proposal is we wish to construct an n-ary partial semi-lattice.
-The intuition is every set of nodes has 0 or 1 unique joins (versus an arbitrary finite partial order where it arbitrary joins).
+The intuition is every set of nodes has 0 or 1 unique suprema (versus an arbitrary finite partial order where each has arbitrarily many suprema).
 TODO formal definition.
 
 The use of our lattice will be to index the distinguished modules where instances are allowed to reside.
-Given a simple ``C T`` head of an instance, the instance goes in ``m(C) /\ m(T)``, where ``m`` maps a definition to the module it is defined in.
+Given a simple ``C0 T`` head of an instance, the instance goes in ``m(C) /\ m(T)``, where ``m`` maps a definition to the module it is defined in.
 In the non-orphan cases we have today, either ``m(C) <= m(T)`` or ``m(T) <= m(C)``, so the join is whatever the "downstream" module is.
 However, if neither module transitively imports each other, a third module that importants both can be declared as the canonical join.
-The ``C T`` instance goes in there.
-This covers the binary case.
+The ``C0 T`` instance goes in there.
+That third module may not be imported by all other modules that import ``C`` and ``T``, so it is not a regular semilattice join, but none of those other modules may define ``instance C0 T``, so we can forget they are suprema from the underlying ``import`` partial order and only worry about them insofar as they declare other types, classes, and instances.
+This means our underlying partial order really doesn't just have the nodes filtered as already described, but also has the (generating) edges filtered to just those imports which are needed to bind classes and type constructors in instance heads.
+All this covers the simple binary case.
 
-Remember a ``C T`` constraint isn't necessarily resolved with a ``C T`` instance.
-There might instead be a ``forall t. C t`` instance.
+Remember a ``C0 T`` constraint isn't necessarily resolved with a ``C0 T`` instance.
+There might instead be a ``forall t. C0 t`` instance.
 In this unary case, the instance must be defined in ``/\{m(c)} = m(c)``, the module that defined the class, and another overlapping instance couldn't possibly be immediately written downstream without immediate catching it, but this simple example presages the phenomena arising from more complex instance heads.
 
-Dually, we can see when trying to resolve a ``forall t. C t`` constraint we must look in ``m(c)`` for the instance.
+Dually, we can see when trying to resolve a ``forall t. C0 t`` constraint we must look in ``m(c)`` for the instance.
 We can formalize this by pretending that all type variables are defined in a bottom module imported by all others.
-Now the lookup
+That means that ``m(var) <= x`` for all variables.
 
 Complex instance heads
 ~~~~~~~~~~~~~~~~~~~~~~
 
-Instead of simple Haskell 98, we have a instance head structure of::
+GHC Haskell isn't Haskell 98, and instance heads can rich applications of type constructors and variables, along with functional dependencies.
+At last functional dependencies are easy to deal with; We only care about the "non-determined" ones in the instance head, which is to say we can pretend the rest were turned into associated type families and moved out of the instance head.
+From here onward, by instance head we mean non-determined portion of the instance head.
+This matches GHC's current behavior.
 
-  data InstanceHead = MkInstanceHead Class [RoseTree (Either TyCon Var)]
+Anyways, GHC currently says that any type constructor in the arguments to the class can rightfully own the instance, but means avoiding orphans isn't good enough to get coherence as there are multiple valid claimants to the instance.
+Today, we could have both ``forall a. C1 T0 a`` and ``forall a. C1 a T1`` declared in ``m(T0)`` and ``m(T1)``, respectively.
+We actually *cannot* fix that problem.
+But we can at least stop it from getting worse.
+If we again take GHC's existing rules and naively adapt them,
+``C1 T0 T1`` for example could be "owned" by ``/\'{C1, T0}`` or ``/\'{C1, T1}``, where ``/\' = /\ . fmap m``, a definition we will continue to use for brevity.
+This is worse than before, as previously ``m(T0)`` and ``m(T1)`` would have to import ``C`` themselves, and so the overlap between ``C1 T0 T1`` and ``forall a. C1 T0 a`` or ``forall a. C1 a T1`` would be immediately caught.
+But, we can fix this by saying the class and *all* the type constructors in the instance head.
+What this means is that ``C1 T0 T1`` must go in ``/\'{C1, T0, T1}``, which must either transitively import for coincide with ``/\'{C1, T0}`` and ``/\'{C1, T1}``.
+This plugs the leak, ensuring that an overlapping ``C1 T0 T1`` instance will be eagerly caught just like today.
 
-Where ``RoseTree`` is defined as::
+Just to recap, this means that any instance (head) must transitively import all modules where more general instances (according to substitutability) are allowed to defined.
+``m`` is a homomorphism from the partial order of instance heads (by substitutability) to the partial order of modules associated with our n-ary partial semi-lattice.
+Where ``mset0`` is a subset of ``mset1``, ``/\mset0`` <= ``/\mset1`` if both exist.
+That means the instance being defined in the join of the modules of the class and all type constructors is sufficient.
 
-  data RoseTree a = MkRoseTree a [RoseTree a]
+Modules, components, packages
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-GHC currently says that any ``TyCon`` in the arguments to the class can rightfully own the instance, but means avoiding orphans isn't good enough to get coherence as there are multiple valid claimants to the instance.
-``C T0 T1`` for example could be "owned" by ``/\{m(C), m(T0)}`` or ``/\{m(C), m(T1)}``.
+So far, the lattice machinary has been described in terms of modules and their imports.
+But the original premise of this proposal is that Cabal would coordinate which suprema modules are the canonicalized as joins in the n-ary partial semilattice.
+Cabal knows of modules existence, but not their imports, so what bridges the gap?
 
-Instance priority
-~~~~~~~~~~~~~~~~~
+The first thing we want to do is add some extra structure to our algebras.
+We can map the underlying relations from modules to components by throwing away the specific module and just remembering what component defines it.
+And we can do the same thing throwing away the component and just remembering the package that contains it.
+These maps are necessarily partial order homomorphisms, because we already demand we can build entire packages at a time, but they aren't naturally guaranteed to be n-ary partial semilattice homormophisms.
 
-We cannot fully resolve the problem, but at least we provide partial priority, with a partial order on instance heads.
+Well, for both Cabal's and human programmers' sake, it is easier if we require that this be the case.
+Thankfully, the demands that this introduces are fairly predictable and reasonable sounding.
+They are:
 
-First of all, desugar repeated vars as distinct vars with equality constraints.
-But then recall we only care about instance *heads*, so we can ignore those new equality constraints that go in the context.
-This means that::
+  #. The join of modules from the same component must also be in that component.
+  #. All join of modules from the same set of components must all be in a component declared to be the join of those components.
+  #. The join of components from the same package must be in that package.
+  #. All join of components from the same set of packages must all be in a package declared to be the join of those packages.
 
-  v0, v1 :: Var
-  -------------
-  v0 <= v1
-
-Essentially, we only have on ``Var`` then, which we will also make the bottom element::
-
-  v :: Var, x :: Either TyCon Var
-  -----------------------------
-  Left v <= x
-
-Next, we add depth subtyping to ``List`` and ``RoseTree``::
-
-  --------
-  [] <= []
-
-  x <= y
-  lx <= ly
-  --------------------
-  (x : lx) <= (y : ly)
-
-  x <= y
-  lx <= ly
-  ----------------------------------
-  MkRoseTree x lx <= MkRoseTree y ly
-
-And keep the bare variable bottom again::
-
-  v :: Var
-  r :: RoseTree (Either TyCon Var)
-  ----------------------------------
-  MkRoseTree (Left v) [] <= r
-
-An finally to put it all together::
-
-  args0 <= args1
-  ------------------------------------------------
-  MkInstanceHead c args0 <= MkInstanceHead c args1
-
-Blaming incoherence
-~~~~~~~~~~~~~~~~~~~
-
-So with that definition, what can we do?
-
+As one can see, we are just repeating the structure at every level.
+It's a bit odd that we have this large heterogeneously named hierarchy.
+If we ever get hierarchical modules, we would then have an arbitrary deep homogeneous hierarchy, and want similar rules to connect sibling modules and children to parents.
+This would more succinctly describe the principle that is repeated in the 4 rules above.
 
 Proposed Change Specification
 -----------------------------
+
+WIP
 
 #. Add a new pragma
 
