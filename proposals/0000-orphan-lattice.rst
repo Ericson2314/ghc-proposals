@@ -68,15 +68,51 @@ Imports (ignoring ``hs-boot`` files) are acyclic.
 We can take their reflexive-transitive closure to get a partial order.
 We can ignore any modules that don't provide types, classes, or instances, removing them from the relation.
 
-The core feature of this proposal is we wish to construct an n-ary partial semi-lattice.
-The intuition is every set of nodes has 0 or 1 unique suprema (versus an arbitrary finite partial order where each has arbitrarily many suprema).
-TODO formal definition.
+The core feature of this proposal is we wish to construct invariant relations between partial orders.
+An invariant relation between two partial orders is a sub partial order of the partial order product.
+This generalizes regular relations being a subset of the Cartesian product of two sets for other algebraic structures.
 
-The use of our lattice will be to index the distinguished modules where instances are allowed to reside.
-Given a simple ``C0 T`` head of an instance, the instance goes in ``m(C) /\ m(T)``, where ``m`` maps a definition to the module it is defined in.
-In the non-orphan cases we have today, either ``m(C) <= m(T)`` or ``m(T) <= m(C)``, so the join is whatever the "downstream" module is.
-However, if neither module transitively imports each other, a third module that importants both can be declared as the canonical join.
-The ``C0 T`` instance goes in there.
+And for the ``b``s we'll be using powerset partial order, which are also nice semi-lattices.
+The intuition is that we are saying a sub-order of our original partial order is isomorphic to a sub-order of the power set lattice,
+and that as we "fill out" our specially designated sub-order, we should get closer to covering the entire power set lattice, until both sides are lattices in the limit.
+
+The first use of our invariant relations will be to index the distinguished modules where instances are allowed to reside.
+Modules will be related to sets of modules, indicating what class and type constructors are allowed in the instance head.
+Every ``m0`` is to ``{m0}``: ``R0 m0 {m0}``.
+And given a ``m0`` and ``m1`` such that ``m0 <= m1`` (``m1`` is or transitively imports ``m0``), ``R0 m1 {m0, m1}``.
+Finally if ``R0 m0 setOfM0`` and ``R0 m0 setOfM1``, then ``R0 m0 (setOfM0 \`union\` setOfM1)``.
+All these can be combined by saying:
+
+- ::
+
+    forall m0 setOfM. (forall m. m \`in\` setOfM => m <= m0) => R m (insert m0 setOfM)
+
+  Every ``m`` is associated with itself inserted into every possible subset of its transitive dependencies.
+
+Additionally, we can deduce that these two formulae:
+
+- ::
+
+    forall setOfM m0 m1. (R m0 setOfM, R m1 setOfM) => (m0 ~ m1)
+
+  Every module set is mapped (though not injectively) to one module.
+
+- ::
+
+    forall setOfM0 setOfM1 m0 m1. (R m0 setOfM0, R m1 setOfM1, setOfM0 <= setOfM1) => (m0 <= m1)
+
+  Whenever two module sets are ordered by inclusion, their associated modules, if they exist, are likewise ordered.
+
+Given a simple ``C0 T`` head of an instance, the instance goes in ``{m(C), m(T)}``, where here ``m`` maps a definition to the module it is defined in.
+In the non-orphan cases we have today, either ``m(C) <= m(T)`` or ``m(T) <= m(C)``, so ``{m(C), m(T)}`` is whatever the "downstream" module is.
+However, if neither module transitively imports each other, a third module that imports both can arbitrary declare itself as ``R m3 {m(C), m(T)}``.
+The ``C0 T`` instance then goes in there.
+These modules associated by fiat, as opposed to naturally arising from the import partial order, are the "adopting modules" that are the main point of this proposal.
+Those declared adopting modules must also respect those two latter formula, which therefore are rules not just deductions for the system as a whole.
+
+One way to read the right side of ``R1`` as the join / suprema.
+
+
 That third module may not be imported by all other modules that import ``C`` and ``T``, so it is not a regular semilattice join, but none of those other modules may define ``instance C0 T``, so we can forget they are suprema from the underlying ``import`` partial order and only worry about them insofar as they declare other types, classes, and instances.
 This means our underlying partial order really doesn't just have the nodes filtered as already described, but also has the (generating) edges filtered to just those imports which are needed to bind classes and type constructors in instance heads.
 All this covers the simple binary case.
